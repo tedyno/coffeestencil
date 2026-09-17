@@ -107,9 +107,9 @@ export function extractContours(svgText: string): Contour[] {
       }
     }
     if (!contours.length) throw new Error('No usable outlines found in the shapes.');
-    // drop crumbs (< 0.5 % of the largest area) and sort largest first
+    // drop crumbs (< 0.03 % of the largest area) and sort largest first
     const maxArea = Math.max(...contours.map(c => c.area));
-    return contours.filter(c => c.area > maxArea * 0.005).sort((a, b) => b.area - a.area);
+    return contours.filter(c => c.area > maxArea * 0.0003).sort((a, b) => b.area - a.area);
   } finally {
     host.remove();
   }

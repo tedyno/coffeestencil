@@ -26,6 +26,7 @@ export interface Params {
   windowD: number;   // dusting window diameter in negative mode [mm]
   thickness: number; // plate thickness [mm]
   bridgeW: number;   // width of bridges holding islands [mm]
+  bridges: number;   // bridges per island, 0 = auto by island size
   cornerR: number;   // corner rounding radius of the plate outline in plan view [mm]
   tabLen: number;    // handle overhang beyond the plate [mm], 0 = no handle
   tabW: number;      // handle width [mm]

@@ -16,6 +16,10 @@ const RIM = 3;           // minimum solid rim around the openings [mm]
 const FILLET = 4;        // rounding where the handle meets the plate [mm]
 const ROUND_SEG = 32;    // circular segments of the corner rounding
 const MIN_EDGE = 0.01;   // outline simplification before extrusion [mm]
+const BRIDGE_SPACING = 20; // auto mode: one bridge per this much island extent [mm]
+const MAX_BRIDGES = 6;
+const BRIDGE_GAP = 3;    // minimum clearance between two bridges [mm]
+const SAMPLE_STEP = 0.5; // island outline sampling for bridge anchors [mm]
 
 /** WASM objects must be freed by hand; collect them and dispose at the end */
 class Scope {
@@ -80,6 +84,63 @@ function nearestPair(a: Pt[][], b: Pt[][], limit: number): { d: number; p: Pt; q
   scan(a, b, false);
   scan(b, a, true);
   return best;
+}
+
+/**
+ * Bridge anchors spread evenly around an island: its outline is sampled,
+ * each sample gets its nearest point on the other parts in the outward
+ * direction (so a bridge never runs back across the island), the overall
+ * shortest one anchors the first bridge and the rest sit at equal arc
+ * length steps from it, each the shortest within the middle half of its
+ * arc.
+ */
+function spreadBridges(outer: Pt[], targets: Pt[][], n: number): { p: Pt; q: Pt }[] {
+  const loop = ccw(outer);
+  const samples: { s: number; p: Pt; nx: number; ny: number }[] = [];
+  let s = 0;
+  for (let i = 0; i < loop.length; i++) {
+    const a = loop[i]!, b = loop[(i + 1) % loop.length]!;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len < 1e-9) continue;
+    // CCW loop: the interior is on the left, outward is the right normal
+    const nx = (b.y - a.y) / len, ny = -(b.x - a.x) / len;
+    for (let t = 0; t < len; t += SAMPLE_STEP) {
+      samples.push({ s: s + t, p: { x: a.x + (b.x - a.x) * t / len, y: a.y + (b.y - a.y) * t / len }, nx, ny });
+    }
+    s += len;
+  }
+  const L = s;
+
+  const found = samples.map(({ p, nx, ny }) => {
+    let bestD = Infinity, bestQ: Pt | null = null;
+    for (const tl of targets) {
+      for (let i = 0; i < tl.length; i++) {
+        const q = closestOnSeg(p, tl[i]!, tl[(i + 1) % tl.length]!);
+        const dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy);
+        if (d < bestD && dx * nx + dy * ny > 0.3 * d) { bestD = d; bestQ = q; }
+      }
+    }
+    return { d: bestD, q: bestQ };
+  });
+
+  const pick = (from: number, to: number): number => {
+    let bi = -1;
+    samples.forEach((sm, i) => {
+      const u = ((sm.s - from) % L + L) % L; // circular distance past `from`
+      if (u <= to - from && found[i]!.q && (bi < 0 || found[i]!.d < found[bi]!.d)) bi = i;
+    });
+    return bi;
+  };
+  const first = pick(0, L);
+  if (first < 0) return [];
+  const chosen = new Set([first]);
+  const s0 = samples[first]!.s;
+  for (let k = 1; k < n; k++) {
+    const center = s0 + k * L / n;
+    const i = pick(center - L / (4 * n), center + L / (4 * n));
+    if (i >= 0) chosen.add(i);
+  }
+  return [...chosen].map(i => ({ p: samples[i]!.p, q: found[i]!.q! }));
 }
 
 /** Strip of width w from p to q, overshooting both ends by w so it bites into both parts */
@@ -175,11 +236,55 @@ function build(wasm: ManifoldToplevel, S: Scope, raw: Contour[], p: Params): Gen
   if (r > 0) plate = round(round(plate, -r), r);
 
   // islands: parts not connected to the plate body. Specks too small to hold
-  // a bridge are left open; the rest is tied to the nearest other part until
-  // everything is one piece (greedy — each bridge merges two parts)
+  // a bridge are left open; every other island gets its bridges spread
+  // around it (count by extent, or fixed), then a greedy pass ties anything
+  // still loose to its nearest part until everything is one piece
   const minIsland = 2 * p.bridgeW * p.bridgeW;
   const bridgeLoops: Pt[][] = [];
   let bridgeCount = 0, dropped = 0;
+  const addBridge = (a: Pt, b: Pt): void => {
+    const strip = S.t(S.t(new CrossSection([toVecs(bridgeStrip(a, b, p.bridgeW))])).intersect(outline));
+    plate = S.t(plate.add(strip));
+    bridgeLoops.push(...fromPolys(strip.toPolygons()));
+    bridgeCount++;
+  };
+  {
+    let parts = plate.decompose().map(c => S.t(c));
+    let bodyIdx = bodyIndex(parts);
+    const specks = parts.filter((c, i) => i !== bodyIdx && c.area() < minIsland);
+    if (specks.length) {
+      for (const s of specks) plate = S.t(plate.subtract(s));
+      dropped += specks.length;
+      parts = plate.decompose().map(c => S.t(c));
+      bodyIdx = bodyIndex(parts);
+    }
+    if (parts.length > 1) {
+      const loops = parts.map(c => fromPolys(c.toPolygons()).map(l => rdp(l, SEARCH_EPS)));
+      const anchors = loops.flatMap((own, i) => {
+        if (i === bodyIdx) return [];
+        const outer = own.reduce((a, b) => Math.abs(signedArea(a)) >= Math.abs(signedArea(b)) ? a : b);
+        const bb = boundsAll([outer]);
+        const n = p.bridges > 0
+          ? p.bridges
+          : Math.max(1, Math.min(MAX_BRIDGES, Math.round(Math.max(bb.w, bb.h) / BRIDGE_SPACING)));
+        return spreadBridges(outer, loops.filter((_, j) => j !== i).flat(), Math.min(n, MAX_BRIDGES));
+      });
+      // neighbouring islands tend to bridge to each other at the same spot
+      // from both sides — keep only one of such near-duplicates
+      const segDist = (a: { p: Pt; q: Pt }, b: { p: Pt; q: Pt }): number => Math.min(
+        ...[[a.p, b], [a.q, b], [b.p, a], [b.q, a]].map(([pt, s]) => {
+          const { p: sp, q: sq } = s as { p: Pt; q: Pt };
+          const c = closestOnSeg(pt as Pt, sp, sq);
+          return Math.hypot(c.x - (pt as Pt).x, c.y - (pt as Pt).y);
+        }));
+      const kept: { p: Pt; q: Pt }[] = [];
+      for (const a of anchors) {
+        if (kept.some(k => segDist(a, k) < BRIDGE_GAP + p.bridgeW)) continue;
+        kept.push(a);
+        addBridge(a.p, a.q);
+      }
+    }
+  }
   for (let guard = 0; guard < 500; guard++) {
     const parts = plate.decompose().map(c => S.t(c));
     if (parts.length <= 1) break;
@@ -206,10 +311,7 @@ function build(wasm: ManifoldToplevel, S: Scope, raw: Contour[], p: Params): Gen
       }
     }
     if (!best) break;
-    const strip = S.t(S.t(new CrossSection([toVecs(bridgeStrip(best.p, best.q, p.bridgeW))])).intersect(outline));
-    plate = S.t(plate.add(strip));
-    bridgeLoops.push(...fromPolys(strip.toPolygons()));
-    bridgeCount++;
+    addBridge(best.p, best.q);
     if (plate.decompose().map(c => S.t(c)).length >= parts.length) break; // no progress — give up
   }
   // anything still loose would fall out of the print

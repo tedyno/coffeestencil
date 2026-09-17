@@ -52,9 +52,15 @@ Main thread: `clipper2d.ts` (stroke expansion), `svg.ts`, `raster.ts`
   and reported (`clipped`).
 - Every island (plate part apart from the body — the part with the largest
   bounding box, not area: in negative mode the motif can outweigh the rim)
-  gets a bridge to its nearest other part; specks under `2·bridgeW²` are
-  subtracted instead. The loop stops when a bridge fails to merge, leftover
-  parts are removed so the export is always one piece.
+  gets `bridges` bridges (auto: one per `BRIDGE_SPACING` mm of extent),
+  spread at equal arc length around its outline, each pointing outward so
+  it never runs back across the island. Near-duplicates (two islands
+  bridging to each other at one spot) are skipped. Specks under
+  `2·bridgeW²` are subtracted instead. A greedy nearest-part pass then ties
+  up anything still loose; it stops when a bridge fails to merge and
+  leftover parts are removed, so the export is always one piece.
+- The contour extractors keep shapes down to 0.03 % of the largest area —
+  line-art eyes and whiskers are tiny next to the outline.
 - Corner rounding `cornerR` is morphological: opening (-r,+r) before
   bridging (after it would erase bridges narrower than 2r), closing (+r,-r)
   after, then the hanging hole is cut again (closing shuts holes of radius

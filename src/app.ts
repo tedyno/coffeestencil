@@ -27,6 +27,8 @@ const els = {
   windowRow: document.getElementById('windowRow')!,
   thickness: document.getElementById('thickness') as HTMLInputElement,
   bridgeW: document.getElementById('bridgeW') as HTMLInputElement,
+  bridges: document.getElementById('bridges') as HTMLInputElement,
+  bridgesVal: document.getElementById('bridgesVal')!,
   cornerR: document.getElementById('cornerR') as HTMLInputElement,
   cornerRVal: document.getElementById('cornerRVal')!,
   tabLen: document.getElementById('tabLen') as HTMLInputElement,
@@ -75,6 +77,7 @@ function readParams(): Params {
     windowD: +els.windowD.value,
     thickness: +els.thickness.value,
     bridgeW: +els.bridgeW.value,
+    bridges: +els.bridges.value,
     cornerR: +els.cornerR.value,
     tabLen: +els.tabLen.value,
     tabW: +els.tabW.value,
@@ -372,6 +375,15 @@ for (const radio of document.querySelectorAll('input[name=mode]')) {
   });
 }
 updateModeControls();
+const showBridges = (): void => {
+  els.bridgesVal.textContent = +els.bridges.value ? els.bridges.value : t('params.auto');
+};
+showBridges();
+onLangChange(showBridges);
+els.bridges.addEventListener('input', () => {
+  showBridges();
+  debouncedRebuild();
+});
 els.cornerR.addEventListener('input', () => {
   els.cornerRVal.textContent = els.cornerR.value;
   debouncedRebuild();

@@ -89,5 +89,6 @@ export function traceImage(img: ImageData, opts: TraceOpts): Contour[] {
   }
   if (!contours.length) throw new Error('No shapes found in the image — try adjusting the threshold.');
   const maxArea = Math.max(...contours.map(c => c.area));
-  return contours.filter(c => c.area > maxArea * 0.005).sort((a, b) => b.area - a.area);
+  // stencils live on fine details (eyes, whiskers) — only real specks go
+  return contours.filter(c => c.area > maxArea * 0.0003).sort((a, b) => b.area - a.area);
 }
