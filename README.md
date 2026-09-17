@@ -6,6 +6,8 @@ Drop in an SVG, PNG or JPG and download a print-ready STL or 3MF — a thin
 plate you hold over the cup and dust cocoa or cinnamon through. Everything
 runs in your browser; nothing is uploaded anywhere.
 
+### ▶︎ [Open the app → tedyno.github.io/coffeestencil](https://tedyno.github.io/coffeestencil/)
+
 ![Coffee Stencil screenshot](docs/screenshot.png)
 
 ## Features
