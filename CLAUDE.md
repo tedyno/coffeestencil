@@ -53,8 +53,12 @@ Main thread: `clipper2d.ts` (stroke expansion), `svg.ts`, `raster.ts`
 - Every island (plate part apart from the body — the part with the largest
   bounding box, not area: in negative mode the motif can outweigh the rim)
   gets `bridges` bridges (auto: one per `BRIDGE_SPACING` mm of extent),
-  spread at equal arc length around its outline, each pointing outward so
-  it never runs back across the island. Near-duplicates (two islands
+  spread at equal arc length around its outline. Anchors must be mutually
+  nearest across the gap (straight, not oblique), point outward and sit on
+  a stretch of even gap width (`BRIDGE_CLEAR` — no line ends/junctions).
+  The first anchor also favours the island centroid (`CENTER_WEIGHT`) so
+  elongated islands are not held at one end. Strips overshoot only
+  `BRIDGE_BITE` — a longer overshoot pokes through thin parts. Near-duplicates (two islands
   bridging to each other at one spot) are skipped. Specks under
   `2·bridgeW²` are subtracted instead. A greedy nearest-part pass then ties
   up anything still loose; it stops when a bridge fails to merge and

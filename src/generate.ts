@@ -19,6 +19,8 @@ const MIN_EDGE = 0.01;   // outline simplification before extrusion [mm]
 const BRIDGE_SPACING = 20; // auto mode: one bridge per this much island extent [mm]
 const MAX_BRIDGES = 6;
 const BRIDGE_GAP = 3;    // minimum clearance between two bridges [mm]
+const BRIDGE_BITE = 0.4;  // bridge overshoot into the parts it joins [mm]
+const CENTER_WEIGHT = 0.3; // first anchor: mm of bridge length traded per mm closer to the island centroid
 const BRIDGE_CLEAR = 3;  // straight, even gap required beside a bridge anchor [mm]
 const SAMPLE_STEP = 0.5; // island outline sampling for bridge anchors [mm]
 
@@ -106,9 +108,11 @@ function nearestOn(p: Pt, loops: Pt[][]): { d: number; q: Pt } {
  * the sample and its nearest point on the other parts are mutually nearest
  * (so the bridge runs straight across, never obliquely), it points outward,
  * and the gap keeps its width along the bridge's own width either side (no
- * line ends, junctions or crossings). The overall shortest valid anchor
+ * line ends, junctions or crossings). The valid anchor with the best mix of
+ * shortness and closeness to the island centroid
  * takes the first bridge, the rest sit at equal arc length steps from it,
- * each the shortest valid one within the middle half of its arc.
+ * each the shortest valid one within the middle half of its arc (or the
+ * whole arc when the middle has none).
  */
 function spreadBridges(outer: Pt[], targets: Pt[][], n: number, w: number): { p: Pt; q: Pt }[] {
   const loop = ccw(outer);
@@ -145,32 +149,57 @@ function spreadBridges(outer: Pt[], targets: Pt[][], n: number, w: number): { p:
     return { d: f.d, q: ok ? f.q : null };
   });
 
-  const pick = (from: number, to: number): number => {
+  const pick = (from: number, to: number, score: (i: number) => number): number => {
     let bi = -1;
     samples.forEach((sm, i) => {
       const u = ((sm.s - from) % L + L) % L; // circular distance past `from`
-      if (u <= to - from && found[i]!.q && (bi < 0 || found[i]!.d < found[bi]!.d)) bi = i;
+      if (u <= to - from && found[i]!.q && (bi < 0 || score(i) < score(bi))) bi = i;
     });
     return bi;
   };
-  const first = pick(0, L);
+  // the first bridge holds the island near its centroid — an anchor at one
+  // end of an elongated island leaves the rest as a lever that snaps off
+  const c = centroid(loop);
+  const first = pick(0, L, i => found[i]!.d + CENTER_WEIGHT * Math.hypot(samples[i]!.p.x - c.x, samples[i]!.p.y - c.y));
   if (first < 0) return [];
   const chosen = new Set([first]);
   const s0 = samples[first]!.s;
   for (let k = 1; k < n; k++) {
     const center = s0 + k * L / n;
-    const i = pick(center - L / (4 * n), center + L / (4 * n));
+    const byLength = (j: number) => found[j]!.d;
+    // middle half of the arc keeps the spacing even; the whole arc is the
+    // fallback when a junction or line end blocks the middle
+    let i = pick(center - L / (4 * n), center + L / (4 * n), byLength);
+    if (i < 0) i = pick(center - L / (2 * n), center + L / (2 * n), byLength);
     if (i >= 0) chosen.add(i);
   }
   return [...chosen].map(i => ({ p: samples[i]!.p, q: found[i]!.q! }));
 }
 
-/** Strip of width w from p to q, overshooting both ends by w so it bites into both parts */
+/** Area centroid of a closed loop */
+function centroid(pts: Pt[]): Pt {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i]!, q = pts[(i + 1) % pts.length]!;
+    const k = p.x * q.y - q.x * p.y;
+    a += k;
+    cx += (p.x + q.x) * k;
+    cy += (p.y + q.y) * k;
+  }
+  return Math.abs(a) > 1e-12 ? { x: cx / (3 * a), y: cy / (3 * a) } : pts[0]!;
+}
+
+/**
+ * Strip of width w from p to q, overshooting both ends just by BRIDGE_BITE
+ * so it fuses with both parts — a longer overshoot pokes through a thin
+ * part into the next opening
+ */
 function bridgeStrip(p: Pt, q: Pt, w: number): Pt[] {
   const len = Math.hypot(q.x - p.x, q.y - p.y);
   const ux = len > 1e-9 ? (q.x - p.x) / len : 1, uy = len > 1e-9 ? (q.y - p.y) / len : 0;
   const nx = -uy * w / 2, ny = ux * w / 2;
-  const a = { x: p.x - ux * w, y: p.y - uy * w }, b = { x: q.x + ux * w, y: q.y + uy * w };
+  const a = { x: p.x - ux * BRIDGE_BITE, y: p.y - uy * BRIDGE_BITE };
+  const b = { x: q.x + ux * BRIDGE_BITE, y: q.y + uy * BRIDGE_BITE };
   return ccw([
     { x: a.x - nx, y: a.y - ny }, { x: b.x - nx, y: b.y - ny },
     { x: b.x + nx, y: b.y + ny }, { x: a.x + nx, y: a.y + ny },
