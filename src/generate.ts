@@ -14,6 +14,8 @@ const SEARCH_EPS = 0.15; // coarser outlines for the bridge distance search [mm]
 const CIRCLE_SEG = 180;  // plate circle segments
 const RIM = 3;           // minimum solid rim around the openings [mm]
 const FILLET = 4;        // rounding where the handle meets the plate [mm]
+const ROUND_SEG = 32;    // circular segments of the corner rounding
+const MIN_EDGE = 0.01;   // outline simplification before extrusion [mm]
 
 /** WASM objects must be freed by hand; collect them and dispose at the end */
 class Scope {
@@ -131,6 +133,7 @@ function build(wasm: ManifoldToplevel, S: Scope, raw: Contour[], p: Params): Gen
   // plate outline: disc + rounded handle toward -y (toward the person holding it)
   const R = p.plateD / 2;
   let outline = circle(R);
+  let hangHole: CrossSection | null = null;
   if (p.tabLen > 0 && p.tabW > 0) {
     const tabW = Math.min(p.tabW, p.plateD);
     const cy = -(R + Math.max(p.tabLen, tabW / 2) - tabW / 2); // center of the rounded end
@@ -139,7 +142,10 @@ function build(wasm: ManifoldToplevel, S: Scope, raw: Contour[], p: Params): Gen
     // closing rounds the concave corners where the handle joins the disc
     outline = S.t(S.t(outline.offset(FILLET, 'Round', 2, 64)).offset(-FILLET, 'Round', 2, 64));
     const holeD = Math.min(p.holeD, tabW - 2 * RIM);
-    if (holeD > 0 && -cy - holeD / 2 >= R + RIM) outline = S.t(outline.subtract(circle(holeD / 2, 0, cy, 64)));
+    if (holeD > 0 && -cy - holeD / 2 >= R + RIM) {
+      hangHole = circle(holeD / 2, 0, cy, 64);
+      outline = S.t(outline.subtract(hangHole));
+    }
   }
 
   // dusting openings, always kept inside a solid rim
@@ -158,6 +164,15 @@ function build(wasm: ManifoldToplevel, S: Scope, raw: Contour[], p: Params): Gen
     clipped = motifArea - S.t(motif.intersect(win)).area() > 1e-3;
   }
   let plate = S.t(outline.subtract(openings));
+
+  // corner rounding: opening (-r, +r) rounds the plate's convex corners,
+  // closing (+r, -r) its concave ones. The opening runs before bridging —
+  // it would erase bridges narrower than 2r; the closing runs once more
+  // after bridging to round the bridge joints
+  const r = Math.max(0, p.cornerR);
+  const round = (c: CrossSection, d: number): CrossSection =>
+    S.t(S.t(c.offset(d, 'Round', 2, ROUND_SEG)).offset(-d, 'Round', 2, ROUND_SEG));
+  if (r > 0) plate = round(round(plate, -r), r);
 
   // islands: parts not connected to the plate body. Specks too small to hold
   // a bridge are left open; the rest is tied to the nearest other part until
@@ -206,6 +221,15 @@ function build(wasm: ManifoldToplevel, S: Scope, raw: Contour[], p: Params): Gen
     });
   }
 
+  if (r > 0) {
+    // closing only adds material, so the plate stays one piece; it would
+    // also shut a hanging hole of radius <= r, so that one is cut again
+    plate = S.t(round(plate, r).intersect(outline));
+    if (hangHole) plate = S.t(plate.subtract(hangHole));
+  }
+
+  // offsets leave micro-edges that collapse in slicers' vertex welding
+  plate = S.t(plate.simplify(MIN_EDGE));
   const solid = S.t(Manifold.extrude(plate, p.thickness));
   const mesh = solid.getMesh();
   const positions = new Float32Array(mesh.triVerts.length * 3);

@@ -27,6 +27,8 @@ const els = {
   windowRow: document.getElementById('windowRow')!,
   thickness: document.getElementById('thickness') as HTMLInputElement,
   bridgeW: document.getElementById('bridgeW') as HTMLInputElement,
+  cornerR: document.getElementById('cornerR') as HTMLInputElement,
+  cornerRVal: document.getElementById('cornerRVal')!,
   tabLen: document.getElementById('tabLen') as HTMLInputElement,
   tabW: document.getElementById('tabW') as HTMLInputElement,
   holeD: document.getElementById('holeD') as HTMLInputElement,
@@ -73,6 +75,7 @@ function readParams(): Params {
     windowD: +els.windowD.value,
     thickness: +els.thickness.value,
     bridgeW: +els.bridgeW.value,
+    cornerR: +els.cornerR.value,
     tabLen: +els.tabLen.value,
     tabW: +els.tabW.value,
     holeD: +els.holeD.value,
@@ -369,6 +372,10 @@ for (const radio of document.querySelectorAll('input[name=mode]')) {
   });
 }
 updateModeControls();
+els.cornerR.addEventListener('input', () => {
+  els.cornerRVal.textContent = els.cornerR.value;
+  debouncedRebuild();
+});
 els.showDims.addEventListener('change', () => { dims.group.visible = els.showDims.checked; });
 
 // vectorization: threshold/simplification/smoothing changes retrace the image

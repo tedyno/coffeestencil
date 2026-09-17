@@ -55,6 +55,12 @@ Main thread: `clipper2d.ts` (stroke expansion), `svg.ts`, `raster.ts`
   gets a bridge to its nearest other part; specks under `2·bridgeW²` are
   subtracted instead. The loop stops when a bridge fails to merge, leftover
   parts are removed so the export is always one piece.
+- Corner rounding `cornerR` is morphological: opening (-r,+r) before
+  bridging (after it would erase bridges narrower than 2r), closing (+r,-r)
+  after, then the hanging hole is cut again (closing shuts holes of radius
+  <= r). Features narrower than 2r disappear — inherent, keep the slider
+  range small. The plate is `simplify`d before extrusion: offset
+  micro-edges otherwise break watertightness after slicer vertex welding.
 - Every Manifold/CrossSection WASM object must be `delete()`d — the `Scope`
   helper in generate.ts tracks and disposes them per request.
 
