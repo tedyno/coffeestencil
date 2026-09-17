@@ -19,6 +19,7 @@ const MIN_EDGE = 0.01;   // outline simplification before extrusion [mm]
 const BRIDGE_SPACING = 20; // auto mode: one bridge per this much island extent [mm]
 const MAX_BRIDGES = 6;
 const BRIDGE_GAP = 3;    // minimum clearance between two bridges [mm]
+const BRIDGE_CLEAR = 3;  // straight, even gap required beside a bridge anchor [mm]
 const SAMPLE_STEP = 0.5; // island outline sampling for bridge anchors [mm]
 
 /** WASM objects must be freed by hand; collect them and dispose at the end */
@@ -86,15 +87,30 @@ function nearestPair(a: Pt[][], b: Pt[][], limit: number): { d: number; p: Pt; q
   return best;
 }
 
+/** Nearest point on a set of closed loops */
+function nearestOn(p: Pt, loops: Pt[][]): { d: number; q: Pt } {
+  let d = Infinity, q = p;
+  for (const l of loops) {
+    for (let i = 0; i < l.length; i++) {
+      const c = closestOnSeg(p, l[i]!, l[(i + 1) % l.length]!);
+      const e = Math.hypot(c.x - p.x, c.y - p.y);
+      if (e < d) { d = e; q = c; }
+    }
+  }
+  return { d, q };
+}
+
 /**
- * Bridge anchors spread evenly around an island: its outline is sampled,
- * each sample gets its nearest point on the other parts in the outward
- * direction (so a bridge never runs back across the island), the overall
- * shortest one anchors the first bridge and the rest sit at equal arc
- * length steps from it, each the shortest within the middle half of its
- * arc.
+ * Bridge anchors spread evenly around an island. Its outline is sampled and
+ * a sample is a valid anchor only where the bridge crosses the gap cleanly:
+ * the sample and its nearest point on the other parts are mutually nearest
+ * (so the bridge runs straight across, never obliquely), it points outward,
+ * and the gap keeps its width along the bridge's own width either side (no
+ * line ends, junctions or crossings). The overall shortest valid anchor
+ * takes the first bridge, the rest sit at equal arc length steps from it,
+ * each the shortest valid one within the middle half of its arc.
  */
-function spreadBridges(outer: Pt[], targets: Pt[][], n: number): { p: Pt; q: Pt }[] {
+function spreadBridges(outer: Pt[], targets: Pt[][], n: number, w: number): { p: Pt; q: Pt }[] {
   const loop = ccw(outer);
   const samples: { s: number; p: Pt; nx: number; ny: number }[] = [];
   let s = 0;
@@ -111,16 +127,22 @@ function spreadBridges(outer: Pt[], targets: Pt[][], n: number): { p: Pt; q: Pt 
   }
   const L = s;
 
-  const found = samples.map(({ p, nx, ny }) => {
-    let bestD = Infinity, bestQ: Pt | null = null;
-    for (const tl of targets) {
-      for (let i = 0; i < tl.length; i++) {
-        const q = closestOnSeg(p, tl[i]!, tl[(i + 1) % tl.length]!);
-        const dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy);
-        if (d < bestD && dx * nx + dy * ny > 0.3 * d) { bestD = d; bestQ = q; }
-      }
+  const near = samples.map(({ p, nx, ny }) => {
+    const { d, q } = nearestOn(p, targets);
+    const mutual = nearestOn(q, [loop]).d > d - SAMPLE_STEP * 0.5 && // p is (about) the closest to q
+      (q.x - p.x) * nx + (q.y - p.y) * ny > 0.9 * d;
+    return { d, q, mutual };
+  });
+  // gap width must hold steady over the bridge and a clearance either side,
+  // keeping bridges off line ends, junctions and crossings
+  const reach = Math.max(1, Math.ceil((w / 2 + BRIDGE_CLEAR) / SAMPLE_STEP));
+  const m = samples.length;
+  const found = near.map((f, i) => {
+    let ok = f.mutual;
+    for (let k = -reach; ok && k <= reach; k++) {
+      ok = Math.abs(near[(i + k + m) % m]!.d - f.d) <= 0.25 * f.d + 0.1;
     }
-    return { d: bestD, q: bestQ };
+    return { d: f.d, q: ok ? f.q : null };
   });
 
   const pick = (from: number, to: number): number => {
@@ -267,7 +289,7 @@ function build(wasm: ManifoldToplevel, S: Scope, raw: Contour[], p: Params): Gen
         const n = p.bridges > 0
           ? p.bridges
           : Math.max(1, Math.min(MAX_BRIDGES, Math.round(Math.max(bb.w, bb.h) / BRIDGE_SPACING)));
-        return spreadBridges(outer, loops.filter((_, j) => j !== i).flat(), Math.min(n, MAX_BRIDGES));
+        return spreadBridges(outer, loops.filter((_, j) => j !== i).flat(), Math.min(n, MAX_BRIDGES), p.bridgeW);
       });
       // neighbouring islands tend to bridge to each other at the same spot
       // from both sides — keep only one of such near-duplicates
