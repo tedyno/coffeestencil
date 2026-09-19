@@ -52,7 +52,9 @@ Geometry (no DOM — runs in the worker):
 
 Main thread: `clipper2d.ts` (stroke expansion), `svg.ts`, `raster.ts`
 (contour extraction), `scene.ts` + `viewcube.ts` (three.js viewport),
-`dims.ts` (dimension annotations), `preview2d.ts` (dusting preview),
+`dims.ts` (dimension annotations), `look.ts` (viewing mode: lighting rigs,
+background, physical materials + procedural surface finishes on per-face mm
+UVs — cosmetic only, exports untouched), `preview2d.ts` (dusting preview),
 `worker-client.ts`, `i18n.ts` (cs/en), `app.ts` (UI wiring only).
 
 ## Geometry invariants

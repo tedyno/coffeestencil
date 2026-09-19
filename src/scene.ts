@@ -7,8 +7,15 @@ import { createViewCube } from './viewcube';
 export interface Viewport {
   /** Group for the mesh + dimensions (mm, z up); cleared on rebuild */
   modelGroup: THREE.Group;
+  /** Material for new model meshes; swapped by the viewing mode (look.ts) */
   material: THREE.Material;
   fitCamera(): void;
+  // internals the viewing mode restyles
+  scene: THREE.Scene;
+  renderer: THREE.WebGLRenderer;
+  grid: THREE.GridHelper;
+  /** The plain CAD lighting, hidden while the viewing mode has its own rig */
+  cadLights: THREE.Group;
 }
 
 // Orthographic projection like CAD plan views: one scale everywhere, no
@@ -33,11 +40,14 @@ export function createViewport(container: HTMLElement): Viewport {
   controls.maxZoom = 50;
   const viewCube = createViewCube(container, camera, controls);
 
-  scene.add(new THREE.HemisphereLight(0xc0caf5, 0x24283b, 1.1));
+  const cadLights = new THREE.Group();
+  cadLights.add(new THREE.HemisphereLight(0xc0caf5, 0x24283b, 1.1));
   const dirLight = new THREE.DirectionalLight(0xffffff, 1.6);
   dirLight.position.set(60, 100, 40);
-  scene.add(dirLight);
-  scene.add(new THREE.GridHelper(200, 20, 0x3b4261, 0x2a2e44));
+  cadLights.add(dirLight);
+  scene.add(cadLights);
+  const grid = new THREE.GridHelper(200, 20, 0x3b4261, 0x2a2e44);
+  scene.add(grid);
 
   const modelGroup = new THREE.Group();
   modelGroup.rotation.x = -Math.PI / 2;
@@ -76,5 +86,5 @@ export function createViewport(container: HTMLElement): Viewport {
 
   const material = new THREE.MeshStandardMaterial({ color: 0xd8c3a5, roughness: 0.45, metalness: 0.05 });
 
-  return { modelGroup, material, fitCamera };
+  return { modelGroup, material, fitCamera, scene, renderer, grid, cadLights };
 }

@@ -10,6 +10,7 @@ import { createDims } from './dims';
 import { drawPreview } from './preview2d';
 import { buildThreeMf } from './threemf';
 import { applyStaticI18n, getLang, onLangChange, setLang, t, type Lang } from './i18n';
+import { BACKGROUNDS, createLook, DEFAULT_LOOK, MATERIALS, planarUv, type LookState } from './look';
 
 // ---------------------------------------------------------------------------
 // UI elements
@@ -49,6 +50,14 @@ const els = {
   download3mf: document.getElementById('download3mf') as HTMLButtonElement,
   hint3d: document.getElementById('hint3d')!,
   lang: document.getElementById('lang') as HTMLSelectElement,
+  lookToggle: document.getElementById('lookToggle') as HTMLButtonElement,
+  lookBody: document.getElementById('lookBody')!,
+  lighting: document.getElementById('lighting') as HTMLSelectElement,
+  bgColor: document.getElementById('bgColor') as HTMLInputElement,
+  bgSwatches: document.getElementById('bgSwatches')!,
+  material: document.getElementById('material') as HTMLSelectElement,
+  matColor: document.getElementById('matColor') as HTMLInputElement,
+  surface: document.getElementById('surface') as HTMLSelectElement,
 };
 
 // localization: translate static markup now, wire the language switch, and
@@ -127,11 +136,12 @@ function applyResult(r: GenResult): void {
   exportGeometry = new THREE.BufferGeometry();
   exportGeometry.setAttribute('position', new THREE.BufferAttribute(r.positions, 3));
   exportGeometry.computeVertexNormals();
+  exportGeometry.setAttribute('uv', planarUv(r.positions)); // surface finishes (viewing mode)
 
   viewport.modelGroup.clear();
   viewport.modelGroup.add(new THREE.Mesh(exportGeometry, viewport.material));
   dims.update(r, p);
-  dims.group.visible = els.showDims.checked;
+  dims.group.visible = els.showDims.checked && !lookState.on;
   viewport.modelGroup.add(dims.group);
   els.hint3d.style.display = 'none';
   if (refitOnNext) { viewport.fitCamera(); refitOnNext = false; }
@@ -388,7 +398,7 @@ els.cornerR.addEventListener('input', () => {
   els.cornerRVal.textContent = els.cornerR.value;
   debouncedRebuild();
 });
-els.showDims.addEventListener('change', () => { dims.group.visible = els.showDims.checked; });
+els.showDims.addEventListener('change', () => { dims.group.visible = els.showDims.checked && !lookState.on; });
 
 // vectorization: threshold/simplification/smoothing changes retrace the image
 const debouncedRetrace = debounce(() => retrace());
@@ -422,3 +432,62 @@ els.download3mf.addEventListener('click', () => {
   if (!lastResult) return;
   downloadBlob(buildThreeMf(lastResult.positions, `${fileName}_stencil`), `${fileName}_stencil.3mf`);
 });
+
+// ---------------------------------------------------------------------------
+// viewing mode: lighting, background, material + surface finish (remembered)
+// ---------------------------------------------------------------------------
+
+const LOOK_KEY = 'coffeestencil.look';
+const look = createLook(viewport);
+let lookState: LookState = loadLook();
+
+function loadLook(): LookState {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LOOK_KEY) || '{}') as Partial<LookState>;
+    const s = { ...DEFAULT_LOOK, ...saved };
+    return s.material in MATERIALS ? s : DEFAULT_LOOK;
+  } catch {
+    return DEFAULT_LOOK;
+  }
+}
+
+function applyLook(): void {
+  try { localStorage.setItem(LOOK_KEY, JSON.stringify(lookState)); } catch { /* private mode */ }
+  look.apply(lookState);
+  els.lookToggle.classList.toggle('on', lookState.on);
+  els.lookBody.hidden = !lookState.on;
+  els.lighting.value = lookState.lighting;
+  els.bgColor.value = lookState.background;
+  els.material.value = lookState.material;
+  els.matColor.value = lookState.color;
+  els.surface.value = lookState.surface;
+  for (const b of els.bgSwatches.children) {
+    (b as HTMLElement).classList.toggle('active', (b as HTMLElement).dataset.color === lookState.background);
+  }
+  dims.group.visible = els.showDims.checked && !lookState.on;
+}
+
+const setLook = (patch: Partial<LookState>): void => {
+  lookState = { ...lookState, ...patch };
+  applyLook();
+};
+
+for (const color of BACKGROUNDS) {
+  const b = document.createElement('button');
+  b.dataset.color = color;
+  b.style.background = color;
+  b.title = color;
+  b.addEventListener('click', () => setLook({ background: color }));
+  els.bgSwatches.appendChild(b);
+}
+els.lookToggle.addEventListener('click', () => setLook({ on: !lookState.on }));
+els.lighting.addEventListener('change', () => setLook({ lighting: els.lighting.value as LookState['lighting'] }));
+els.bgColor.addEventListener('input', () => setLook({ background: els.bgColor.value }));
+// a new material starts from its own colour; the picker overrides it
+els.material.addEventListener('change', () => {
+  const material = els.material.value as LookState['material'];
+  setLook({ material, color: MATERIALS[material].color });
+});
+els.matColor.addEventListener('input', () => setLook({ color: els.matColor.value }));
+els.surface.addEventListener('change', () => setLook({ surface: els.surface.value as LookState['surface'] }));
+applyLook();

@@ -76,6 +76,32 @@
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     color: var(--muted); pointer-events: none; font-size: 15px;
   }
+  #look {
+    position: absolute; top: 12px; left: 12px; width: 250px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  #lookToggle {
+    align-self: flex-start; padding: 6px 12px; border: 1px solid var(--border);
+    background: rgba(36, 40, 59, .92); color: var(--fg); font-weight: 500;
+  }
+  #lookToggle.on { background: var(--accent); border-color: var(--accent); color: #1a1b26; }
+  #lookBody {
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: rgba(36, 40, 59, .92); backdrop-filter: blur(6px);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  #lookBody[hidden] { display: none; }
+  #lookBody select { width: 130px; }
+  input[type=color] {
+    width: 44px; height: 26px; padding: 0 2px; border: 1px solid var(--border);
+    border-radius: 5px; background: var(--bg); cursor: pointer;
+  }
+  .swatches { display: flex; gap: 6px; justify-content: flex-end; }
+  .swatches button {
+    width: 22px; height: 22px; padding: 0; border-radius: 50%;
+    border: 2px solid var(--border);
+  }
+  .swatches button.active { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -161,6 +187,41 @@
 
   <div id="viewport">
     <div id="hint3d" data-i18n="hint3d">Load a file…</div>
+    <div id="look">
+      <button id="lookToggle">✨ <span data-i18n="look.toggle">Viewing mode</span></button>
+      <div id="lookBody" hidden>
+        <label class="row"><span data-i18n="look.lighting">Lighting</span>
+          <select id="lighting">
+            <option value="studio" data-i18n="lighting.studio">studio</option>
+            <option value="daylight" data-i18n="lighting.daylight">daylight</option>
+            <option value="cafe" data-i18n="lighting.cafe">café (warm)</option>
+            <option value="dramatic" data-i18n="lighting.dramatic">dramatic</option>
+            <option value="top" data-i18n="lighting.top">from above</option>
+          </select>
+        </label>
+        <label class="row"><span data-i18n="look.background">Background</span><input type="color" id="bgColor"></label>
+        <div class="swatches" id="bgSwatches"></div>
+        <label class="row"><span data-i18n="look.material">Material</span>
+          <select id="material">
+            <option value="plaMatte" data-i18n="material.plaMatte">matte PLA</option>
+            <option value="plaGloss" data-i18n="material.plaGloss">glossy PLA</option>
+            <option value="silk" data-i18n="material.silk">silk PLA</option>
+            <option value="petg" data-i18n="material.petg">translucent PETG</option>
+            <option value="steel" data-i18n="material.steel">stainless steel</option>
+            <option value="brass" data-i18n="material.brass">brass</option>
+            <option value="copper" data-i18n="material.copper">copper</option>
+          </select>
+        </label>
+        <label class="row"><span data-i18n="look.color">Colour</span><input type="color" id="matColor"></label>
+        <label class="row"><span data-i18n="look.surface">Surface</span>
+          <select id="surface">
+            <option value="smooth" data-i18n="surface.smooth">smooth</option>
+            <option value="printed" data-i18n="surface.printed">print lines</option>
+            <option value="blasted" data-i18n="surface.blasted">bead-blasted</option>
+          </select>
+        </label>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="./src/app.ts"></script>
