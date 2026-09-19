@@ -41,6 +41,20 @@ Built with [bun](https://bun.sh), TypeScript, [three.js](https://threejs.org),
 [clipper-lib](https://www.npmjs.com/package/clipper-lib) — no server,
 no CDN, local dependencies only.
 
+## Command line
+
+The same generator runs headless — every option of the web UI is available:
+
+```sh
+bun run cli cat.svg --preset espresso --3mf        # -> cat_stencil.stl + .3mf
+bun run cli logo.png --mode negative --window 70 --threshold 100
+bun run cli heart.svg --width 50 --bridges 2 --tab-len 0 -o heart.stl
+bun run cli --help
+```
+
+`bun link` installs it as a global `coffeestencil` command. Input can also be
+an http(s) URL or `-` for stdin.
+
 ## How it works
 
 1. **Extract contours** — SVG shapes are sampled via `getPointAtLength`;

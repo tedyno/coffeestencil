@@ -2,8 +2,10 @@
 
 Client-only web app (bun + TypeScript + three.js): generates a latte art
 dusting stencil STL/3MF from SVG/PNG/JPG. Everything runs in the browser,
-geometry in a Web Worker. Sibling of `../cookiecut` — shared modules (svg,
-raster, scene, viewcube, threemf, worker plumbing) were copied from there.
+geometry in a Web Worker; the same generator also runs headless as a CLI
+(`scripts/cli.ts`). Sibling of `../cookiecut` — shared modules (svg,
+svg-headless, raster, scene, viewcube, threemf, worker plumbing, the CLI
+scaffolding) were copied from there.
 
 ## Commands
 
@@ -13,7 +15,19 @@ bun run dev           # build:worker + dev server (port via BUN_PORT)
 bun run build         # static build into dist/
 bun run build:worker  # rebundle just the worker into src/worker.gen.js
 bunx tsc --noEmit     # typecheck (bun itself does not typecheck)
+bun run cli <input> [options]  # headless generator, see --help
 ```
+
+## CLI
+
+`scripts/cli.ts` mirrors the web UI without a browser: `svg-headless.ts`
+(copied from cookiecut; fast-xml-parser, analytic curve flattening,
+`.class`/tag `<style>` rules) replaces `svg.ts`, sharp decodes rasters for
+`raster.ts`, and `generate.ts` runs in-process (it writes
+`src/manifold-wasm.ts` itself when missing). Its `PRESETS` and defaults
+duplicate `app.ts`/`index.html` — **keep them in sync**, and add any new UI
+parameter to the CLI too. `bunx tsc --noEmit` covers only `src/` —
+typecheck the CLI by running it.
 
 ## Worker — BEWARE of stale builds
 
@@ -80,4 +94,7 @@ No checked-in tests. Pure geometry: `bun -e "import { generate } from
 './src/generate.ts'; ..."` with mock contours. End to end: a playwright-core
 script (Chromium from `~/Library/Caches/ms-playwright/`) uploads a file, waits
 for the "Model generated" status, downloads the STL — validated in Python
-with trimesh: `is_watertight`, exactly one body, bbox.
+with trimesh: `is_watertight`, exactly one body, bbox. Faster for geometry
+changes: `bun run cli samples/<x>.svg -o <tmp>/x` and the same trimesh check
+(no worker rebuild needed) — but it goes through `svg-headless.ts`, so
+changes to `svg.ts` still need the browser path.

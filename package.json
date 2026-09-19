@@ -1,15 +1,21 @@
 {
   "name": "coffeestencil",
   "private": true,
+  "bin": {
+    "coffeestencil": "scripts/cli.ts"
+  },
   "scripts": {
     "build:worker": "bun scripts/build-worker.ts",
     "dev": "bun run build:worker && bun index.html",
-    "build": "bun run build:worker && bun build index.html --outdir=dist --minify"
+    "build": "bun run build:worker && bun build index.html --outdir=dist --minify",
+    "cli": "bun scripts/cli.ts"
   },
   "dependencies": {
     "clipper-lib": "^6.4.2",
+    "fast-xml-parser": "^5.8.0",
     "fflate": "^0.8.3",
     "manifold-3d": "^3.5.1",
+    "sharp": "^0.34.5",
     "three": "^0.184.0"
   },
   "devDependencies": {
